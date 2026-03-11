@@ -8,3 +8,7 @@
 
 - add support for UDP data stream (only json for now)
 - add support for RTT interface
+
+## 0.5.2 (11/04/2026)
+
+-
