@@ -87,3 +87,8 @@ Plugins supported so far:
 * ``pudp`` - stream data over UDP
 
 For more information, use the plugin's ``--help`` option.
+
+
+Library integration guide:
+
+* :doc:`library`
