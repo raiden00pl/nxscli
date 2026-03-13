@@ -1,6 +1,7 @@
 import queue
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest  # type: ignore
 from nxslib.dev import DeviceChannel
 
@@ -40,7 +41,80 @@ def test_pluginqueuedata():
     assert ret == []
     ret = qdata.queue_get(block=True, timeout=0.1)
     assert ret == []
+    ret = qdata.queue_get_raw(block=False)
+    assert ret == []
+    assert qdata.queue_can_passthrough_numpy() is False
 
+    TriggerHandler.cls_cleanup()
+
+
+def test_pluginqueuedata_numpy_passthrough_flag() -> None:
+    q = queue.Queue()
+    chan = DeviceChannel(0, 2, 1, "chan0")
+    dtc = DTriggerConfig(ETriggerType.ALWAYS_ON)
+    trig = TriggerHandler(0, dtc)
+    qdata = PluginQueueData(q, chan, trig)
+
+    assert qdata.queue_can_passthrough_numpy() is True
+    TriggerHandler.cls_cleanup()
+
+
+def test_pluginqueuedata_queue_get_returns_triggered_block_payload() -> None:
+    class Block:
+        def __init__(self) -> None:
+            self.data = np.array([[1.0, 2.0], [3.0, 4.0]])
+            self.meta = np.array([[10], [20]])
+
+    q = queue.Queue()
+    q.put([Block()])
+    chan = DeviceChannel(0, 2, 2, "chan0")
+    dtc = DTriggerConfig(ETriggerType.ALWAYS_ON)
+    trig = TriggerHandler(0, dtc)
+    qdata = PluginQueueData(q, chan, trig)
+
+    ret = qdata.queue_get(block=False)
+    assert len(ret) == 1
+    assert ret[0].data.shape == (2, 2)
+    assert ret[0].meta.shape == (2, 1)
+    TriggerHandler.cls_cleanup()
+
+
+def test_pluginqueuedata_queue_get_handles_block_without_meta() -> None:
+    class Block:
+        def __init__(self) -> None:
+            self.data = np.array([[1.0], [2.0]])
+            self.meta = None
+
+    q = queue.Queue()
+    q.put([Block()])
+    chan = DeviceChannel(0, 2, 1, "chan0")
+    dtc = DTriggerConfig(ETriggerType.ALWAYS_ON)
+    trig = TriggerHandler(0, dtc)
+    qdata = PluginQueueData(q, chan, trig)
+
+    ret = qdata.queue_get(block=False)
+    assert len(ret) == 1
+    assert ret[0].meta is None
+    TriggerHandler.cls_cleanup()
+
+
+def test_pluginqueuedata_queue_get_raw_returns_original_blocks() -> None:
+    class Block:
+        def __init__(self) -> None:
+            self.data = np.array([1.0, 2.0])
+            self.meta = np.array([10, 20], dtype=np.uint32)
+
+    q = queue.Queue()
+    q.put([Block()])
+    chan = DeviceChannel(0, 2, 1, "chan0")
+    dtc = DTriggerConfig(ETriggerType.ALWAYS_ON)
+    trig = TriggerHandler(0, dtc)
+    qdata = PluginQueueData(q, chan, trig)
+
+    ret = qdata.queue_get_raw(block=False)
+    assert len(ret) == 1
+    assert ret[0].data.shape == (2,)
+    assert ret[0].meta.shape == (2,)
     TriggerHandler.cls_cleanup()
 
 

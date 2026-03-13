@@ -844,10 +844,20 @@ def test_pluginthread_is_done_partial() -> None:
 
 
 def test_pluginthread_common_not_done_path() -> None:
+    import numpy as np
+
     class _QD:
+        def queue_can_passthrough_numpy(self) -> bool:
+            return False
+
         def queue_get(self, block, timeout=1.0):
             del block, timeout
-            return [SimpleNamespace(data=[1.0], meta=[0])]
+            return [
+                SimpleNamespace(
+                    data=np.array([[1.0]], dtype=float),
+                    meta=np.array([[0]], dtype=np.uint32),
+                )
+            ]
 
     plugin = PluginNone()
     plugin._samples = 2

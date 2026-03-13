@@ -1,16 +1,12 @@
 """Module containing CSV plugin."""  # noqa: A005
 
 import csv
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from nxscli.idata import PluginData, PluginQueueData
 from nxscli.iplugin import IPluginFile
 from nxscli.logger import logger
-from nxscli.pluginthr import PluginThread
-
-if TYPE_CHECKING:
-    from nxslib.nxscope import DNxscopeStream
-
+from nxscli.pluginthr import PluginThread, StreamBlocks
 
 ###############################################################################
 # Class: PluginCsv
@@ -47,12 +43,14 @@ class PluginCsv(PluginThread, IPluginFile):
 
         return csvwriters
 
-    def _sample_row_get(self, sample: "DNxscopeStream") -> tuple[Any, Any]:
+    def _sample_row_get(
+        self, data_t: tuple[Any, ...], meta_t: tuple[Any, ...]
+    ) -> tuple[Any, Any]:
         # covert to string
         if self._meta_string:
-            return (sample.data, bytes(list(sample.meta)).decode())
+            return (data_t, bytes(list(meta_t)).decode())
         else:
-            return sample.data, sample.meta
+            return data_t, meta_t
 
     def _init(self) -> None:
         assert self._phandler
@@ -66,18 +64,20 @@ class PluginCsv(PluginThread, IPluginFile):
 
         logger.info("csv capture DONE")
 
-    def _handle_samples(
-        self, data: list["DNxscopeStream"], pdata: "PluginQueueData", j: int
+    def _handle_blocks(
+        self, data: StreamBlocks, pdata: "PluginQueueData", j: int
     ) -> None:
         # store data
-        for sample in data:
+        for data_t, meta_t in self._block_rows(data, pdata, j):
             if not self._nostop:  # pragma: no cover
                 # ignore data if capture done for channel
                 if self._datalen[j] >= self._samples:
                     break
 
             # write row
-            self._csvwriters[j][0].writerow(self._sample_row_get(sample))
+            self._csvwriters[j][0].writerow(
+                self._sample_row_get(data_t, meta_t)
+            )
 
             # one sample
             self._datalen[j] += 1

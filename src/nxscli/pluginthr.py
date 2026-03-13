@@ -2,14 +2,18 @@
 
 import threading
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Iterator
 
 from nxslib.thread import ThreadCommon
 
 if TYPE_CHECKING:
-    from nxslib.nxscope import DNxscopeStream
+    from nxslib.nxscope import DNxscopeStreamBlock
 
     from nxscli.idata import PluginData, PluginQueueData
+
+    StreamBlocks = list[DNxscopeStreamBlock]
+else:
+    StreamBlocks = list[Any]
 
 
 ###############################################################################
@@ -36,20 +40,37 @@ class PluginThread(ABC):
         assert self._plugindata
         # get samples
         for j, pdata in enumerate(self._plugindata.qdlist):
-            # get data from queue
-            data = pdata.queue_get(block=True, timeout=1)
-
             if not self._nostop:  # pragma: no cover
-                # ignore data if capture done for channel
                 if self._datalen[j] >= self._samples:
                     continue
 
-            # handle samples
-            self._handle_samples(data, pdata, j)
+            data = self._queue_data_get(pdata)
+
+            if self._is_block_payload(data):
+                self._handle_blocks(data, pdata, j)
+            elif data:
+                raise RuntimeError(
+                    "nxscli requires numpy block stream payloads; "
+                    "non-block payloads are not supported"
+                )
 
         # break loop if done
         if self._is_done(self._datalen):
             self._thread.stop_set()
+
+    def _queue_data_get(self, pdata: "PluginQueueData") -> Any:
+        if pdata.queue_can_passthrough_numpy():
+            return pdata.queue_get_raw(block=True, timeout=1)
+
+        return pdata.queue_get(block=True, timeout=1)
+
+    def _is_block_payload(self, data: Any) -> bool:
+        return (
+            bool(data)
+            and isinstance(data, list)
+            and hasattr(data[0], "data")
+            and hasattr(data[0].data, "shape")
+        )
 
     def _init_common(self) -> None:
         self._init()
@@ -93,11 +114,35 @@ class PluginThread(ABC):
             done = False
         return done
 
+    def _block_rows(
+        self, data: StreamBlocks, pdata: "PluginQueueData", j: int
+    ) -> Iterator[tuple[tuple[Any, ...], tuple[Any, ...]]]:
+        for block in data:
+            arr = block.data
+            meta_arr = block.meta
+            for idx in range(int(arr.shape[0])):
+                row = arr[idx]
+                vals = row.tolist() if hasattr(row, "tolist") else list(row)
+                data_t = tuple(vals) if isinstance(vals, list) else (vals,)
+                if meta_arr is None:
+                    meta_t: tuple[Any, ...] = ()
+                else:
+                    mrow = meta_arr[idx]
+                    mvals = (
+                        mrow.tolist()
+                        if hasattr(mrow, "tolist")
+                        else list(mrow)
+                    )
+                    meta_t = (
+                        tuple(mvals) if isinstance(mvals, list) else (mvals,)
+                    )
+                yield data_t, meta_t
+
     @abstractmethod
-    def _handle_samples(
-        self, data: list["DNxscopeStream"], pdata: "PluginQueueData", j: int
+    def _handle_blocks(
+        self, data: StreamBlocks, pdata: "PluginQueueData", j: int
     ) -> None:
-        """Handle samples from queue and update datalen."""
+        """Handle block payload from queue and update datalen."""
 
     @abstractmethod
     def _init(self) -> None:

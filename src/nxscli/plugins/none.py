@@ -1,15 +1,11 @@
 """Module containing dummy capture plugin."""
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from nxscli.idata import PluginData, PluginQueueData
 from nxscli.iplugin import IPluginNone
 from nxscli.logger import logger
-from nxscli.pluginthr import PluginThread
-
-if TYPE_CHECKING:
-    from nxslib.nxscope import DNxscopeStream
-
+from nxscli.pluginthr import PluginThread, StreamBlocks
 
 ###############################################################################
 # Class: PluginNone
@@ -32,10 +28,10 @@ class PluginNone(PluginThread, IPluginNone):
     def _final(self) -> None:
         logger.info("None DONE")
 
-    def _handle_samples(
-        self, data: list["DNxscopeStream"], pdata: "PluginQueueData", j: int
+    def _handle_blocks(
+        self, data: StreamBlocks, pdata: "PluginQueueData", j: int
     ) -> None:
-        for _ in data:
+        for _ in self._block_rows(data, pdata, j):
             # get data len
             self._datalen[j] += 1
 

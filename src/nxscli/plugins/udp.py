@@ -2,16 +2,12 @@
 
 import json
 import socket
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from nxscli.idata import PluginData, PluginQueueData
 from nxscli.iplugin import IPluginFile
 from nxscli.logger import logger
-from nxscli.pluginthr import PluginThread
-
-if TYPE_CHECKING:
-    from nxslib.nxscope import DNxscopeStream
-
+from nxscli.pluginthr import PluginThread, StreamBlocks
 
 ###############################################################################
 # Class: PluginUdp
@@ -41,11 +37,11 @@ class PluginUdp(PluginThread, IPluginFile):
         self._sock.close()
         logger.info("UDP capture DONE")
 
-    def _handle_samples(
-        self, data: list["DNxscopeStream"], pdata: "PluginQueueData", j: int
+    def _handle_blocks(
+        self, data: StreamBlocks, pdata: "PluginQueueData", j: int
     ) -> None:
         # store data
-        for sample in data:
+        for data_t, _meta_t in self._block_rows(data, pdata, j):
             if not self._nostop:  # pragma: no cover
                 # ignore data if capture done for channel
                 if self._datalen[j] >= self._samples:
@@ -56,7 +52,7 @@ class PluginUdp(PluginThread, IPluginFile):
             temp["timestamp"] = self._datalen[j]
 
             # TODO: optimise
-            for i, val in enumerate(sample.data):
+            for i, val in enumerate(data_t):
                 if pdata.vdim > 1:
                     s = pdata.channame + "_" + str(i)
                 else:
